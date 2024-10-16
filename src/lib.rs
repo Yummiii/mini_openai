@@ -26,7 +26,7 @@ pub enum Error {
     SerializationError(serde_json::Error),
 
     #[error("Failed to deserialize response: {0}")]
-    DeserializationError(serde_json::Error),
+    DeserializationError(String),
 
     #[error("Network error: {0}")]
     NetworkError(String),
@@ -290,22 +290,22 @@ impl Default for Embeddings {
 }
 
 #[derive(Debug, serde::Deserialize)]
-struct EmbeddingsResponse {
-    data: Vec<Embedding>,
-    model: String,
-    usage: Option<Usage>, // Not all implementations may return this
+pub struct EmbeddingsResponse {
+    pub data: Vec<Embedding>,
+    pub model: String,
+    pub usage: Option<Usage>, // Not all implementations may return this
 }
 
 #[derive(Debug, serde::Deserialize)]
-struct Embedding {
-    index: u64,
-    embedding: Vec<f64>,
+pub struct Embedding {
+    pub index: u64,
+    pub embedding: Vec<f32>,
 }
 
 #[derive(Debug, serde::Deserialize)]
-struct Usage {
-    prompt_tokens: u32,
-    total_tokens: u32,
+pub struct Usage {
+    pub prompt_tokens: u32,
+    pub total_tokens: u32,
 }
 
 #[cfg(feature = "ureq")]
@@ -537,7 +537,7 @@ impl Client {
         let body = serde_json::to_string(request).map_err(Error::SerializationError)?;
         let response = self.inner.do_request(url, body).await?;
 
-        serde_json::from_str(&response).map_err(Error::DeserializationError)
+        serde_json::from_str(&response).map_err(|e| Error::DeserializationError(e.to_string()))
     }
 
     /// Sends a request to the OpenAI API to generate a completion for a chat conversation.
@@ -557,7 +557,7 @@ impl Client {
     ///
     /// # Example
     ///
-    /// ```rust,no_run
+    /// ```rust
     /// use mini_openai::{Client, ChatCompletions, Message, ROLE_USER};
     ///
     /// let client = Client::new(None, None).unwrap();
@@ -586,10 +586,168 @@ impl Client {
         let body = serde_json::to_string(request).map_err(Error::SerializationError)?;
         let response = self.inner.do_request(url, body)?;
 
-        serde_json::from_str(&response).map_err(Error::DeserializationError)
+        serde_json::from_str(&response).map_err(|e| Error::DeserializationError(e.to_string()))
     }
 
-    //async fn completions(&self, request: &ChatCompletions) -> Result<CompletionsResponse, Error> {}
+    /// Attempts to retrieve a chat completion and deserializes the response into a custom type.
+    ///
+    /// This function makes multiple attempts to retrieve a chat completion, up to a specified maximum number of tries.
+    /// If a successful response is received, it will attempt to deserialize the response into the desired type using
+    /// a provided converter function. If an error is caused anywhere the whole chain is retried up to *max_tries* times.
+    ///
+    /// If all attempts fail, the error that was last received will be returned.
+    ///
+    /// # Arguments
+    ///
+    /// * `request`: The chat completion request to send.
+    /// * `max_tries`: The maximum number of attempts to make.
+    /// * `converter`: A function that takes the content of the chat completion response and attempts to deserialize it
+    ///               into the desired type.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<T, Error>`: The deserialized result if successful, or the final error if all attempts fail.
+    ///
+    /// # Errors
+    ///
+    /// * Any errors that occur during the network request itself.
+    /// * Any errors that occur during deserialization.
+    ///
+    /// # Example
+    ///
+    /// For the likely case that you want to parse JSON, you can use the `parse_json_lenient` helper function.
+    /// Here's how to use it:
+    ///
+    /// ```rust,ignore
+    /// #[derive(Debug, serde::Deserialize)]
+    /// struct Hello {
+    ///     hello: String,
+    /// }
+    ///
+    /// let client = mini_openai::Client::new(None, None).unwrap();
+    /// let request = mini_openai::ChatCompletions {
+    ///     messages: vec![
+    ///         mini_openai::Message {
+    ///             content: r#"Respond with {"hello": "world"}"#.into(),
+    ///             role: mini_openai::ROLE_SYSTEM.into(),
+    ///         }
+    ///     ],
+    ///     ..Default::default()
+    /// };
+    ///
+    /// let hello: Hello = client.chat_completions_into(&request, 3, mini_openai::parse_json_lenient).await.unwrap();
+    /// println!("Result: {:?}", hello);
+    /// ```
+    #[cfg(feature = "reqwest")]
+    pub async fn chat_completions_into<F, T, E>(
+        &self,
+        request: &ChatCompletions,
+        max_tries: usize,
+        converter: F,
+    ) -> Result<T, Error>
+    where
+        F: Fn(String) -> Result<T, E>,
+        E: ToString,
+    {
+        let mut error: Option<Error> = None;
+
+        for _ in 1..=max_tries {
+            match self.chat_completions(request).await {
+                Ok(mut response) => {
+                    let choice = response.choices.swap_remove(0);
+                    match converter(choice.message.content) {
+                        Ok(result) => return Ok(result),
+                        Err(e) => error = Some(Error::DeserializationError(e.to_string())),
+                    }
+                }
+                Err(e) => {
+                    error = Some(e);
+                }
+            }
+        }
+
+        Err(error.unwrap())
+    }
+
+    /// Attempts to retrieve a chat completion and deserializes the response into a custom type.
+    ///
+    /// This function makes multiple attempts to retrieve a chat completion, up to a specified maximum number of tries.
+    /// If a successful response is received, it will attempt to deserialize the response into the desired type using
+    /// a provided converter function. If an error is caused anywhere the whole chain is retried up to *max_tries* times.
+    ///
+    /// If all attempts fail, the error that was last received will be returned.
+    ///
+    /// # Arguments
+    ///
+    /// * `request`: The chat completion request to send.
+    /// * `max_tries`: The maximum number of attempts to make.
+    /// * `converter`: A function that takes the content of the chat completion response and attempts to deserialize it
+    ///               into the desired type.
+    ///
+    /// # Returns
+    ///
+    /// * `Result<T, Error>`: The deserialized result if successful, or the final error if all attempts fail.
+    ///
+    /// # Errors
+    ///
+    /// * Any errors that occur during the network request itself.
+    /// * Any errors that occur during deserialization.
+    ///
+    /// # Example
+    ///
+    /// For the likely case that you want to parse JSON, you can use the `parse_json_lenient` helper function.
+    /// Here's how to use it:
+    ///
+    /// ```rust
+    /// #[derive(Debug, serde::Deserialize)]
+    /// struct Hello {
+    ///     hello: String,
+    /// }
+    ///
+    /// let client = mini_openai::Client::new(None, None).unwrap();
+    /// let request = mini_openai::ChatCompletions {
+    ///     messages: vec![
+    ///         mini_openai::Message {
+    ///             content: r#"Respond with {"hello": "world"}"#.into(),
+    ///             role: mini_openai::ROLE_SYSTEM.into(),
+    ///         }
+    ///     ],
+    ///     ..Default::default()
+    /// };
+    ///
+    /// let hello: Hello = client.chat_completions_into(&request, 3, mini_openai::parse_json_lenient).unwrap();
+    /// println!("Result: {:?}", hello);
+    /// ```
+    #[cfg(feature = "ureq")]
+    pub fn chat_completions_into<F, T, E>(
+        &self,
+        request: &ChatCompletions,
+        max_tries: usize,
+        converter: F,
+    ) -> Result<T, Error>
+    where
+        F: Fn(String) -> Result<T, E>,
+        E: ToString,
+    {
+        let mut error: Option<Error> = None;
+
+        for _ in 1..=max_tries {
+            match self.chat_completions(request) {
+                Ok(mut response) => {
+                    let choice = response.choices.swap_remove(0);
+                    match converter(choice.message.content) {
+                        Ok(result) => return Ok(result),
+                        Err(e) => error = Some(Error::DeserializationError(e.to_string())),
+                    }
+                }
+                Err(e) => {
+                    error = Some(e);
+                }
+            }
+        }
+
+        Err(error.unwrap())
+    }
 
     /// Sends a request to the OpenAI API to generate embeddings of text.
     ///
@@ -622,12 +780,12 @@ impl Client {
     /// println!("{}", response.data[0].embedding);
     /// ```
     #[cfg(feature = "reqwest")]
-    async fn embeddings(&self, request: &Embeddings) -> Result<EmbeddingsResponse, Error> {
+    pub async fn embeddings(&self, request: &Embeddings) -> Result<EmbeddingsResponse, Error> {
         let url = format!("{}/embeddings", self.base_uri);
         let body = serde_json::to_string(request).map_err(Error::SerializationError)?;
         let response = self.inner.do_request(url, body).await?;
 
-        serde_json::from_str(&response).map_err(Error::DeserializationError)
+        serde_json::from_str(&response).map_err(|e| Error::DeserializationError(e.to_string()))
     }
 
     /// Sends a request to the OpenAI API to generate embeddings of text.
@@ -646,7 +804,7 @@ impl Client {
     ///
     /// # Example
     ///
-    /// ```rust,no_run
+    /// ```rust
     /// use mini_openai::{Client, Embeddings, Message, ROLE_USER};
     ///
     /// let client = Client::new(None, None).unwrap();
@@ -658,15 +816,33 @@ impl Client {
     /// let response = client.embeddings(&request).unwrap();
     ///
     /// // Print the generated completion
-    /// println!("{}", response.data[0].embedding);
+    /// println!("{:?}", response.data[0].embedding);
     /// ```
     #[cfg(feature = "ureq")]
-    fn embeddings(&self, request: &Embeddings) -> Result<EmbeddingsResponse, Error> {
+    pub fn embeddings(&self, request: &Embeddings) -> Result<EmbeddingsResponse, Error> {
         let url = format!("{}/embeddings", self.base_uri);
         let body = serde_json::to_string(request).map_err(Error::SerializationError)?;
         let response = self.inner.do_request(url, body)?;
 
-        serde_json::from_str(&response).map_err(Error::DeserializationError)
+        serde_json::from_str(&response).map_err(|e| Error::DeserializationError(e.to_string()))
+    }
+}
+
+/// Helper function to be used with Client::chat_completions_into().
+///
+/// Pass this function to chat_completions_into() to let it parse a JSON
+/// document. This function allows for some blabber emitted by the LLM,
+/// making things like explanations or markdown-style fences a non-issue.
+pub fn parse_json_lenient<T>(text: String) -> Result<T, String>
+where
+    T: serde::de::DeserializeOwned,
+{
+    let found = (text.find('{'), text.rfind('}'));
+    if let (Some(begin), Some(end)) = found {
+        let json = &text[begin..=end];
+        serde_json::from_str(json).map_err(|e| e.to_string())
+    } else {
+        Err("The text doesn't contain a JSON object".into())
     }
 }
 
@@ -676,7 +852,7 @@ mod tests {
 
     #[cfg(feature = "ureq")]
     #[test]
-    fn chat_completions() -> Result<(), Error> {
+    fn test_chat_completions() -> Result<(), Error> {
         let client = Client::new(None, None)?;
         let request = ChatCompletions {
             messages: vec![Message {
@@ -694,26 +870,9 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(feature = "ureq")]
-    #[test]
-    fn embeddings() -> Result<(), Error> {
-        let client = Client::new(None, None)?;
-        let request = Embeddings {
-            input: "Hello".into(),
-            ..Default::default()
-        };
-
-        let response: EmbeddingsResponse = client.embeddings(&request)?;
-
-        assert_eq!(response.data.len(), 1);
-        assert_eq!(response.data[0].embedding.is_empty(), false);
-
-        Ok(())
-    }
-
     #[cfg(feature = "reqwest")]
     #[tokio::test]
-    async fn chat_completions() -> Result<(), Error> {
+    async fn test_chat_completions() -> Result<(), Error> {
         let client = Client::new(None, None)?;
         let request = ChatCompletions {
             messages: vec![Message {
@@ -731,9 +890,74 @@ mod tests {
         Ok(())
     }
 
-    #[cfg(feature = "reqwest")]
+    #[cfg(feature = "ureq")]
     #[test]
-    fn embeddings() -> Result<(), Error> {
+    fn test_chat_completions_into() -> Result<(), Error> {
+        #[derive(serde::Deserialize)]
+        struct Test {
+            hello: String,
+        }
+
+        let client = Client::new(None, None)?;
+        let request = ChatCompletions {
+            messages: vec![Message {
+                role: ROLE_SYSTEM.into(),
+                content: r#"Respond with this JSON: {"hello": "a word of your choosing"}."#.into(),
+            }],
+            ..Default::default()
+        };
+
+        let response: Test = client.chat_completions_into(&request, 3, parse_json_lenient)?;
+        assert_eq!(response.hello.is_empty(), false);
+
+        Ok(())
+    }
+
+    #[cfg(feature = "reqwest")]
+    #[tokio::test]
+    async fn test_chat_completions_into() -> Result<(), Error> {
+        #[derive(serde::Deserialize)]
+        struct Test {
+            hello: String,
+        }
+
+        let client = Client::new(None, None)?;
+        let request = ChatCompletions {
+            messages: vec![Message {
+                role: ROLE_SYSTEM.into(),
+                content: r#"Respond with this JSON: {"hello": "a word of your choosing"}."#.into(),
+            }],
+            ..Default::default()
+        };
+
+        let response: Test = client
+            .chat_completions_into(&request, 3, parse_json_lenient)
+            .await?;
+        assert_eq!(response.hello.is_empty(), false);
+
+        Ok(())
+    }
+
+    #[cfg(feature = "ureq")]
+    #[test]
+    fn test_embeddings() -> Result<(), Error> {
+        let client = Client::new(None, None)?;
+        let request = Embeddings {
+            input: "Hello".into(),
+            ..Default::default()
+        };
+
+        let response: EmbeddingsResponse = client.embeddings(&request)?;
+
+        assert_eq!(response.data.len(), 1);
+        assert_eq!(response.data[0].embedding.is_empty(), false);
+
+        Ok(())
+    }
+
+    #[cfg(feature = "reqwest")]
+    #[tokio::test]
+    async fn test_embeddings() -> Result<(), Error> {
         let client = Client::new(None, None)?;
         let request = Embeddings {
             input: "Hello".into(),
@@ -744,6 +968,23 @@ mod tests {
 
         assert_eq!(response.data.len(), 1);
         assert_eq!(response.data[0].embedding.is_empty(), false);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_parse_json_lenient() -> Result<(), String> {
+        #[derive(serde::Deserialize)]
+        struct Test {
+            hello: String,
+        }
+
+        let test: Test = parse_json_lenient(r#"Here's your JSON: {"hello": "world"}"#.into())?;
+        assert_eq!(test.hello, "world");
+
+        let test: Result<Test, String> =
+            parse_json_lenient(r#"JSON is a great choice for your request!"#.into());
+        assert_eq!(test.is_err(), true);
 
         Ok(())
     }

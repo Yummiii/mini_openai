@@ -56,10 +56,10 @@ export OPENAI_API_BASE=http://localhost:3000/v1
 # export OPENAI_API_KEY=sk-...
 
 # Synchronous API with ureq:
-cargo run --features=ureq --example sync
+cargo run --features=ureq --example sync-chat-completion
 
 # Asynchronous API with reqwest:
-cargo run --features=reqwest --example async
+cargo run --features=reqwest --example async-chat-completion
 ```
 
 ### Configuration
