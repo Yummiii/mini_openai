@@ -2,6 +2,13 @@
 name = "mini-openai"
 version = "0.1.0"
 edition = "2021"
+license = "BSD-2-Clause"
+description = "An OpenAI API client with minimal dependencies"
+readme = "README.md"
+repository = "https://github.com/Papierkorb/mini_openai"
+homepage = "https://github.com/Papierkorb/mini_openai"
+keywords = ["llm", "openai", "ollama", "ai", "chatgpt"]
+categories = ["api-bindings", "text-processing"]
 
 [features]
 reqwest = ["dep:reqwest"]
@@ -15,7 +22,7 @@ reqwest = { version = "0.12.8", optional = true }
 ureq = { version = "2.10.1", optional = true }
 
 [dev-dependencies]
-tokio = { version = "*", features = ["macros", "rt-multi-thread"] }
+tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
 
 [[example]]
 name = "async-chat-completion"
