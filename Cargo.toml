@@ -1,6 +1,6 @@
 [package]
 name = "mini-openai"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2021"
 license = "BSD-2-Clause"
 description = "An OpenAI API client with minimal dependencies"
@@ -23,6 +23,9 @@ ureq = { version = "2.10.1", optional = true }
 
 [dev-dependencies]
 tokio = { version = "1", features = ["macros", "rt-multi-thread"] }
+
+[package.metadata.docs.rs]
+features = ["reqwest"]
 
 [[example]]
 name = "async-chat-completion"
