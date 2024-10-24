@@ -42,13 +42,13 @@ pub const ROLE_SYSTEM: &str = "system";
 pub const ROLE_USER: &str = "user";
 pub const ROLE_ASSISTANT: &str = "assistant";
 
-#[derive(Debug, serde::Serialize, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Serialize, serde::Deserialize)]
 pub struct Message {
     pub content: String,
     pub role: String,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum ResponseFormat {
     JsonObject,
     JsonSchema(serde_json::Value),
@@ -75,7 +75,7 @@ impl serde::Serialize for ResponseFormat {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Stop {
     String(String),
     Array(Vec<String>),
@@ -126,7 +126,7 @@ fn is_false(value: &bool) -> bool {
 ///   ..Default::default()
 /// };
 /// ```
-#[derive(Debug, serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct ChatCompletions {
     pub messages: Vec<Message>,
     pub model: String,
@@ -190,7 +190,7 @@ impl Default for ChatCompletions {
     }
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Deserialize)]
 pub struct Choice {
     pub index: usize,
     pub message: Message,
@@ -198,7 +198,7 @@ pub struct Choice {
     pub finish_reason: String,
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Deserialize)]
 pub struct ChatCompletionsResponse {
     pub id: String,
     pub object: String,
@@ -208,7 +208,7 @@ pub struct ChatCompletionsResponse {
     //pub usage: Usage,
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub enum Input {
     String(String),
     Array(Vec<String>),
@@ -267,7 +267,7 @@ impl serde::Serialize for Input {
 /// };
 /// ```
 ///
-#[derive(Debug, serde::Serialize)]
+#[derive(Clone, Debug, serde::Serialize)]
 pub struct Embeddings {
     pub input: Input,
     pub model: String,
@@ -289,20 +289,20 @@ impl Default for Embeddings {
     }
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Deserialize)]
 pub struct EmbeddingsResponse {
     pub data: Vec<Embedding>,
     pub model: String,
     pub usage: Option<Usage>, // Not all implementations may return this
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Deserialize)]
 pub struct Embedding {
     pub index: u64,
     pub embedding: Vec<f32>,
 }
 
-#[derive(Debug, serde::Deserialize)]
+#[derive(Clone, Debug, serde::Deserialize)]
 pub struct Usage {
     pub prompt_tokens: u32,
     pub total_tokens: u32,
