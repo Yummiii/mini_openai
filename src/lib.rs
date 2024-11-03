@@ -164,6 +164,8 @@ pub struct ChatCompletions {
     // pub parallel_tool_calls: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub user: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub temperature: Option<f32>
 }
 
 impl Default for ChatCompletions {
@@ -186,6 +188,7 @@ impl Default for ChatCompletions {
             stop: None,
             stream: false,
             user: None,
+            temperature: None
         }
     }
 }
